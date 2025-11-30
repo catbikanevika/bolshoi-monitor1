@@ -1,0 +1,49 @@
+name: Bolshoi Theater Monitor
+on:
+  schedule:
+    # Запуск каждые 30 минут с понедельника по пятницу
+    - cron: '*/30 * * * 1-5'
+    # Запуск каждый час в выходные
+    - cron: '0 * * * 0,6'
+  
+  # Ручной запуск из интерфейса GitHub
+  workflow_dispatch:
+  
+  # Запуск при пуше в главную ветку (для тестирования)
+  push:
+    branches: [ main ]
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    name: Check for new Bolshoi announcements
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        # Сохраняем историю просмотренных объявлений между запусками
+        persist-credentials: false
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4
+        
+    - name: Run Bolshoi monitor
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python bolshoi_monitor.py
+        
+    - name: Commit and push if changed
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add seen_ads.txt
+        git diff --staged --quiet || git commit -m "Update seen ads history"
+        git push
