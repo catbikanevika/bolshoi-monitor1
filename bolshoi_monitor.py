@@ -2,12 +2,14 @@ import requests
 from bs4 import BeautifulSoup
 import hashlib
 import os
+import time
+import random
 
-# Глобальная переменная для хранения истории в памяти
+# Глобальная переменная для хранения истории
 seen_ads_history = set()
 
 def load_seen_ads():
-    """Загрузка истории - упрощенная версия без коммитов"""
+    """Загрузка истории"""
     global seen_ads_history
     try:
         with open('seen_ads.txt', 'r', encoding='utf-8') as f:
@@ -18,13 +20,13 @@ def load_seen_ads():
         seen_ads_history = set()
 
 def save_seen_ads():
-    """Сохранение истории - только локально"""
+    """Сохранение истории"""
     global seen_ads_history
     try:
         with open('seen_ads.txt', 'w', encoding='utf-8') as f:
             for item in seen_ads_history:
                 f.write(item + '\n')
-        print(f"💾 История сохранена локально. Записей: {len(seen_ads_history)}")
+        print(f"💾 История сохранена. Записей: {len(seen_ads_history)}")
     except Exception as e:
         print(f"⚠️ Не удалось сохранить историю: {e}")
 
@@ -57,67 +59,157 @@ def send_telegram_message(message):
         return False
 
 def get_page_content():
-    """Получение содержимого страницы"""
+    """Получение содержимого главной страницы"""
+    url = "https://bolshoi.ru/"
+    
+    # Случайные User-Agent для обхода блокировки
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15'
+    ]
+    
+    headers = {
+        'User-Agent': random.choice(user_agents),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
+    }
+    
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get('https://bolshoi.ru/news', headers=headers, timeout=15)
-        response.raise_for_status()
-        print("✅ Страница Большого театра загружена")
-        return response.text
+        print(f"🔗 Пытаемся загрузить: {url}")
+        response = requests.get(url, headers=headers, timeout=15)
+        print(f"📊 Статус ответа: {response.status_code}")
+        
+        if response.status_code == 200:
+            print("✅ Главная страница успешно загружена")
+            return response.text
+        else:
+            print(f"❌ Ошибка HTTP: {response.status_code}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print("❌ Таймаут при загрузке страницы")
+        return None
+    except requests.exceptions.ConnectionError:
+        print("❌ Ошибка соединения")
+        return None
     except Exception as e:
-        print(f"❌ Ошибка загрузки страницы: {e}")
+        print(f"❌ Неожиданная ошибка: {e}")
         return None
 
 def parse_news(html):
-    """Парсинг новостей с сайта"""
+    """Парсинг новостей с главной страницы"""
+    if not html:
+        return []
+        
     soup = BeautifulSoup(html, 'html.parser')
     news_items = []
     
-    # Поиск по разным селекторам
-    selectors = [
-        '.news-item',
-        '.article-item', 
-        '.news-list-item',
-        '[class*="news"]',
-        'a[href*="/news/"]',
-        'a[href*="/about/press/"]'
+    print("🔍 Начинаем поиск новостей на главной странице...")
+    
+    # Стратегии поиска для главной страницы
+    strategies = [
+        # Стратегия 1: Поиск по классам, связанным с новостями
+        lambda: soup.find_all(class_=lambda x: x and any(word in x.lower() for word in ['news', 'article', 'post', 'item', 'card'])),
+        
+        # Стратегия 2: Все ссылки с новостями
+        lambda: [a for a in soup.find_all('a', href=True) if any(word in a.get('href', '') for word in ['/news/', '/press/', '/about/', '/events/'])],
+        
+        # Стратегия 3: Заголовки
+        lambda: soup.find_all(['h1', 'h2', 'h3', 'h4']),
+        
+        # Стратегия 4: Все карточки и блоки
+        lambda: soup.find_all(['div', 'section', 'article']),
+        
+        # Стратегия 5: Все ссылки на странице
+        lambda: soup.find_all('a', href=True)
     ]
     
-    for selector in selectors:
-        items = soup.select(selector)
-        if items:
-            print(f"✅ Найден селектор: {selector} - {len(items)} элементов")
-            for item in items:
-                # Поиск заголовка
-                title_elem = item.find(['h1', 'h2', 'h3', 'h4']) or item.find('a') or item
-                title = title_elem.get_text(strip=True) if title_elem else ''
+    for i, strategy in enumerate(strategies, 1):
+        try:
+            items = strategy()
+            if items:
+                print(f"✅ Стратегия {i}: найдено {len(items)} элементов")
                 
-                # Поиск ссылки
-                link_elem = item.find('a') or item
-                link = link_elem.get('href', '') if hasattr(link_elem, 'get') else ''
+                for item in items:
+                    try:
+                        # Получаем заголовок в зависимости от типа элемента
+                        if item.name in ['h1', 'h2', 'h3', 'h4']:
+                            title = item.get_text(strip=True)
+                            # Ищем ссылку рядом с заголовком
+                            link_elem = item.find_parent('a') or item.find_next('a')
+                            link = link_elem.get('href', '') if link_elem else ''
+                        elif item.name == 'a':
+                            title = item.get_text(strip=True)
+                            link = item.get('href', '')
+                        else:
+                            title = item.get_text(strip=True)
+                            link_elem = item.find('a')
+                            link = link_elem.get('href', '') if link_elem else ''
+                        
+                        # Очистка и проверка заголовка
+                        if title and len(title) > 15 and len(title) < 200:
+                            # Обработка ссылки
+                            if link and link.startswith('/'):
+                                link = 'https://bolshoi.ru' + link
+                            elif link and not link.startswith('http'):
+                                link = 'https://bolshoi.ru/' + link
+                            
+                            # Пропускаем навигационные и служебные ссылки
+                            skip_words = ['вход', 'регистрация', 'поиск', 'english', 'карта', 'расписание', 'купить билет']
+                            if any(skip_word in title.lower() for skip_word in skip_words):
+                                continue
+                                
+                            news_items.append({
+                                'title': title,
+                                'link': link,
+                                'content': item.get_text(strip=True)
+                            })
+                    except Exception as e:
+                        continue
                 
-                if title and len(title) > 10:
-                    # Преобразование относительной ссылки
-                    if link and link.startswith('/'):
-                        link = 'https://bolshoi.ru' + link
-                    elif link and not link.startswith('http'):
-                        link = 'https://bolshoi.ru/' + link
+                if news_items:
+                    print(f"🎯 Стратегия {i} успешна! Найдено новостей: {len(news_items)}")
+                    break
                     
-                    news_items.append({
-                        'title': title,
-                        'link': link,
-                        'content': item.get_text(strip=True)
-                    })
-            break
+        except Exception as e:
+            print(f"⚠️ Ошибка в стратегии {i}: {e}")
+            continue
     
-    return news_items
+    # Убираем дубликаты по заголовку
+    unique_news = []
+    seen_titles = set()
+    for news in news_items:
+        # Нормализуем заголовок для сравнения
+        normalized_title = ' '.join(news['title'].lower().split())
+        if normalized_title not in seen_titles:
+            unique_news.append(news)
+            seen_titles.add(normalized_title)
+    
+    print(f"📰 Уникальных новостей найдено: {len(unique_news)}")
+    
+    # Покажем первые 3 заголовка для отладки
+    if unique_news:
+        print("🔍 Примеры найденных заголовков:")
+        for i, news in enumerate(unique_news[:3], 1):
+            print(f"  {i}. {news['title'][:80]}...")
+    
+    return unique_news
 
 def main():
     """Основная функция"""
     print("=" * 50)
     print("🎭 МОНИТОРИНГ БОЛЬШОГО ТЕАТРА")
+    print("🌐 Главная страница: https://bolshoi.ru/")
     print("⏰ Запуск через GitHub Actions")
     print("=" * 50)
     
@@ -125,17 +217,24 @@ def main():
     load_seen_ads()
     
     # Получение страницы
+    print("🌐 Загружаем главную страницу...")
     html = get_page_content()
+    
     if not html:
-        print("🚨 Завершение работы из-за ошибки загрузки")
+        print("🚨 Не удалось загрузить главную страницу")
         return
     
     # Парсинг новостей
     news_list = parse_news(html)
-    print(f"📰 Обработано новостей: {len(news_list)}")
+    
+    if not news_list:
+        print("⚠️ Не удалось найти новости на главной странице")
+        return
     
     KEYWORD = "Доступный Большой"
     new_found = False
+    
+    print(f"🔎 Ищем ключевое слово: '{KEYWORD}'")
     
     # Проверка на ключевое слово
     for news in news_list:
@@ -147,7 +246,9 @@ def main():
             
             if news_hash not in seen_ads_history:
                 print(f"🎉 НАЙДЕНО НОВОЕ ОБЪЯВЛЕНИЕ!")
-                print(f"📝 {news['title']}")
+                print(f"📝 Заголовок: {news['title']}")
+                if news['link']:
+                    print(f"🔗 Ссылка: {news['link']}")
                 
                 # Формирование сообщения
                 message = (
@@ -158,7 +259,7 @@ def main():
                 if news['link']:
                     message += f"<b>Ссылка:</b>\n{news['link']}\n\n"
                 
-                message += "🔔 Автоматический мониторинг"
+                message += "🔔 Автоматический мониторинг главной страницы"
                 
                 # Отправка уведомления
                 if send_telegram_message(message):
@@ -167,11 +268,14 @@ def main():
                     print("✅ Уведомление отправлено и добавлено в историю")
     
     if not new_found:
-        print("ℹ️ Новых объявлений не найдено")
+        print("ℹ️ Новых объявлений с ключевым словом не найдено")
+        print("📋 Все просмотренные заголовки:")
+        for i, news in enumerate(news_list[:10], 1):  # Показываем первые 10
+            print(f"  {i}. {news['title'][:70]}...")
     
-    # Сохранение истории (только локально для этого запуска)
+    # Сохранение истории
     save_seen_ads()
-    print("✅ Мониторинг завершен успешно!")
+    print("✅ Мониторинг главной страницы завершен!")
 
 if __name__ == "__main__":
     main()
