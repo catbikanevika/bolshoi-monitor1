@@ -1,4 +1,4 @@
-name: Bolshoi Monitor
+name: Bolshoi Telegram Monitor
 
 on:
   schedule:
@@ -21,8 +21,8 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
       
-    - name: Create empty seen_ads.txt
-      run: echo "" > seen_ads.txt
+    - name: Create empty seen_posts.txt
+      run: echo "" > seen_posts.txt
       
     - name: Run monitor
       env:
