@@ -1,52 +1,31 @@
-name: Bolshoi Theater Monitor
+name: Bolshoi Monitor
 
 on:
   schedule:
-    # Запуск каждые 30 минут
-    - cron: '*/30 * * * *'
-  # Ручной запуск
+    - cron: '*/30 * * * *'  # Каждые 30 минут
   workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Python
+    - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
         
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        
-    - name: Create seen_ads.txt if not exists
-      run: |
-        if [ ! -f seen_ads.txt ]; then
-          echo "Создаем файл seen_ads.txt"
-          touch seen_ads.txt
-        fi
-        
-    - name: Run monitor script
+      run: pip install -r requirements.txt
+      
+    - name: Create empty seen_ads.txt
+      run: echo "" > seen_ads.txt
+      
+    - name: Run monitor
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: python bolshoi_monitor.py
-        
-    - name: Commit and push if changes
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add -A
-        if git diff --staged --quiet; then
-          echo "Нет изменений для коммита"
-        else
-          git commit -m "Update monitoring data"
-          git push
-        fi
