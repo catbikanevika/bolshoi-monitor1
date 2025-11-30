@@ -109,7 +109,7 @@ def extract_posts_from_html(html_content):
                 if text and len(text) > 10:
                     posts.append({
                         'text': text,
-                        'url': 'https://t.me/bolshoi_theatre',  # Базовый URL
+                        'url': 'https://t.me/bolshoi_theatre',
                         'date': datetime.now().strftime('%Y-%m-%d'),
                         'content': text
                     })
@@ -260,28 +260,16 @@ def main():
                 print(f"📝 Текст: {post['text'][:100]}...")
                 print(f"🔍 Совпадение: {matched_info}")
                 
-                # Определяем тип уведомления по найденным ключевым словам
-                if "доступный" in matched_info.lower():
-                    notification_type = "ДОСТУПНЫЙ БОЛЬШОЙ"
-                elif "возраст" in matched_info.lower():
-                    notification_type = "МОЛОДЕЖНАЯ ПРОГРАММА 16-25 ЛЕТ"
-                else:
-                    notification_type = "СООТВЕТСТВИЕ КРИТЕРИЯМ"
-                
                 # Формирование сообщения для уведомления
                 message = (
-                    f"🎭 <b>НОВЫЙ ПОСТ: {notification_type}!</b>\n\n"
-                    f"<b>Текст поста:</b>\n{post['text']}\n\n"
+                    f"🎭 <b>Появились новые крутые билеты в Большой театр!</b>\n\n"
                 )
                 
-                if post['url']:
-                    message += f"<b>Ссылка на канал:</b>\n{post['url']}\n\n"
-                
-                if post['date']:
-                    message += f"<b>Дата обнаружения:</b> {post['date']}\n\n"
-                
-                message += f"<b>Найдены ключевые слова:</b> {matched_info}\n\n"
-                message += "🔔 Автоматический мониторинг Telegram канала"
+                # Добавляем ссылку на пост
+                if post['url'] and 't.me' in post['url']:
+                    message += f"<b>Ссылка на пост:</b>\n{post['url']}"
+                else:
+                    message += f"<b>Ссылка на пост:</b>\nhttps://t.me/bolshoi_theatre"
                 
                 # Отправка уведомления
                 if send_telegram_message(message):
